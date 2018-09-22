@@ -1,0 +1,162 @@
+//
+// Slow proof of concept (POC) implementation of Supersingular Isogeny Diffie Hellman protocol for
+// sharing secret keys over insecure chanels having an attacker with quantum resources.
+// Here I have 64-bit of security but you can uncomment eA,eB to get 256 bit (slower but fair).
+// 
+// This is just for educational purposes, it is vulnerable. Montgomery curves need
+// to be used and Montgomery Ladder. More info on this crypto scheme 
+// http://b3ck.blogspot.com/2016/08/criptografia-asimetrica-con-curvas.html
+//
+// Copy and Paste this code in: http://magma.maths.usyd.edu.au/calc/
+//
+//  16-Sep-2018 (Viva Mexico!)
+//  22-Sep-2018 (Fixed bug, now keys always work with probability 1 once generated)
+// 
+// Eduardo Ruiz Duarte
+// rduarte@ciencias.unam.mx
+//
+
+
+lA := 2;
+lB := 3;
+eA := 63;
+eB := 41;
+//eA := 257; 
+//eB := 163;
+f := 11;
+s := 1;
+t := 0;
+p := lA^eA*lB^eB*f - 1;
+
+SIDH_Param_A_EllipticTorsionBasis := function(E,lA,eA,lB,eB,f)
+
+PA := ((lB^eB)*f)^2 * Random(E);
+QA := ((lB^eB)*f)^2 * Random(E);
+ka := 1;
+
+keyfound := false;
+printf "Finding random point generators of E[l^e]=E[%o]", lA^eA ;
+printf "Attempt:%o ",ka ;
+while not keyfound do 
+	w := WeilPairing(PA,QA,lA^eA);
+	if w^(lA^eA) eq 1 and w^(lA^(eA-1)) ne 1
+		then 
+			keyfound := true;
+		else
+			ka := ka+1;
+			printf "%o ", ka;
+			PA := ((lB^eB)*f)^2 *Random(E);
+			QA := ((lB^eB)*f)^2 *Random(E);
+	end if;
+end while;
+printf "\nFound :-D\n";
+return PA,QA;
+end function;
+
+
+
+SIDH_A_IsogenyfromKernel_phiA_E_EA := function(E0, SA, eA ,PB,QB)
+_<x> := PolynomialRing(BaseField(E0));
+E := E0;
+phiA_PB := PB;
+phiA_QB := QB;
+    for e:=eA-2 to 0 by -2 do
+        S:=2^e*SA;
+        ker:=&*[x-P[1] : P in [z*S: z in [1..3]]];
+        E,phiA:=IsogenyFromKernel(E,ker);
+        SA:=phiA(SA);
+        phiA_PB:=phiA(phiA_PB);
+        phiA_QB:=phiA(phiA_QB);
+    end for;
+
+    a:=Coefficients(E)[4];
+    b:=Coefficients(E)[5];
+    return phiA_PB,phiA_QB,EllipticCurve([a,b]);
+end function;
+
+SIDH_B_IsogenyfromKernel_phiB_E_EB := function(E0, SB, eB ,PA,QA)
+_<x> := PolynomialRing(BaseField(E0));
+E := E0;
+phiB_PA := PA;
+phiB_QA := QA;
+    for e:=eB-1 to 0 by -1 do
+        S:=3^e*SB;
+        ker:=&*[x-P[1] : P in [z*S: z in [1..2]]];
+        E,phiB:=IsogenyFromKernel(E,ker);
+        SB:=phiB(SB);
+        phiB_PA:=phiB(phiB_PA);
+        phiB_QA:=phiB(phiB_QA);
+    end for;
+
+    a:=Coefficients(E)[4];
+    b:=Coefficients(E)[5];
+    return phiB_PA,phiB_QA,EllipticCurve([a,b]);
+end function;
+
+SIDH_A_SharedSecret := function(E0, a,eA, phiB_PA, phiB_QA) 
+_<x> := PolynomialRing(BaseField(E0));
+E := E0;
+P := phiB_PA;
+Q := phiB_QA;
+R := P+a*Q;
+    for e:=eA-2 to 0 by -2 do
+        S:=2^e*R;
+        ker:=&*[x-P[1] : P in [z*S: z in [1..3]]];
+        E,phi:=IsogenyFromKernel(E,ker);
+        R:=phi(R);
+    end for;
+return E;
+end function;
+
+SIDH_B_SharedSecret := function(E0,b,eB,phiA_PB, phiA_QB)
+_<x> := PolynomialRing(BaseField(E0));
+E := E0;
+P := phiA_PB;
+Q := phiA_QB;
+R := P+b*Q;
+    for e:=eB-1 to 0 by -1 do
+        S:=3^e*R;
+        ker:=&*[x-P[1] : P in [z*S: z in [1..2]]];
+        E,phi:=IsogenyFromKernel(E,ker);
+        R:=phi(R);
+    end for;
+return E;
+end function;
+
+
+F<i> := FiniteField(p^2);
+E := EllipticCurve([F!s,F!t]);
+
+printf "Generating parameters\n";
+PA,QA := SIDH_Param_A_EllipticTorsionBasis(E,lA,eA,lB,eB,f);
+PB,QB := SIDH_Param_A_EllipticTorsionBasis(E,lB,eB,lA,eA,f);
+
+printf "\nGenerating random private keys for Alice and Bob\n";
+a := Random(lA^eA); a := a - IntegerRing()!(Integers(lA)!a);
+b := Random(lB^eB); b := b - IntegerRing()!(Integers(lB)!b);
+a;b;
+
+printf "\nPublic key parameters for Alice... (this step takes some seconds, however in reality keys are generated once)...\n";
+SA := PA + a*QA;
+phiA_PB,phiA_QB,EA := SIDH_A_IsogenyfromKernel_phiA_E_EA(E,SA,eA,PB,QB);
+phiA_PB;phiA_QB;EA;
+
+printf "\nPublic key parameters for Bob...  (this step takes some seconds, however in reality keys are generated once)...\n";
+SB := PB + b*QB;
+phiB_PA,phiB_QA,EB := SIDH_B_IsogenyfromKernel_phiB_E_EB(E,SB,eB,PA,QA);
+phiB_PA;phiB_QA;EB;
+
+printf "\nAfter interchanging pubkeys...\n";
+printf "Computing shared Elliptic curve for Alice.. (be patient, just some seconds, this has quantum security)).\n";
+SecA := SIDH_A_SharedSecret(EB, a,eA, phiB_PA, phiB_QA);
+printf "Computing shared Elliptic curve for Bob... (be patient, just some seconds, this has quantum security)\n";
+SecB := SIDH_B_SharedSecret(EA, b,eB, phiA_PB, phiA_QB);
+
+
+printf "jInvariants of Bob's and Alice's elliptic curves must be the same (since their curves must be isomorphic), therefore this is their shared secret/password\n";
+jA := jInvariant(SecA);
+jB := jInvariant(SecB);
+printf "Secret elliptic curve jInvariant for Alice is: %o\n", jA;
+printf "Secret elliptic curve jInvariant for Bob is: %o\n", jB;
+printf "The previous jInvariants must be the same, just checking...\n";
+jA eq jB;
