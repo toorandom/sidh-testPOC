@@ -1,5 +1,5 @@
 # sidh-testPOC
-Slow (but fair) implementation of quantum-secure DH key exchange using isogeny crypto<br><br><
+Slow (but fair) implementation of quantum-secure DH key exchange using isogeny crypto<br><br>
 <br>
  Slow implementation of Supersingular Isogeny Diffie Hellman protocol for<br>
  sharing secret keys over insecure chanels with an attacker with quantum resources.<br>
